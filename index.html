@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Pop Time Timer</title>
+
+    <link rel="manifest" href="manifest.webmanifest" />
+
+    <style>
+        :root {
+            --bg: #000;
+            --fg: #fff;
+            --muted: rgba(255, 255, 255, .75);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--fg);
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .wrap {
+            min-height: 100dvh;
+            padding: max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom));
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .time {
+            margin-top: 12dvh;
+            font-size: clamp(56px, 10vw, 92px);
+            font-weight: 650;
+            letter-spacing: 0.5px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        label {
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        input {
+            width: 140px;
+            font-size: 16px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, .18);
+            background: rgba(255, 255, 255, .10);
+            color: var(--fg);
+            outline: none;
+            text-align: center;
+        }
+
+        .chip {
+            padding: 10px 14px;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, .18);
+            background: rgba(255, 255, 255, .10);
+            color: var(--fg);
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .chip:active {
+            transform: scale(.98);
+        }
+
+        .presetItem {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, .18);
+            background: rgba(255, 255, 255, .10);
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .presetItem:active {
+            transform: scale(.985);
+        }
+
+        .presetDel {
+            font-weight: 900;
+            opacity: .75;
+            padding: 0 6px;
+            border-radius: 10px;
+        }
+
+        .presetDel:active {
+            transform: scale(.95);
+            opacity: 1;
+        }
+
+        .controls {
+            width: min(560px, 100%);
+            display: flex;
+            gap: 16px;
+            margin-bottom: 8px;
+        }
+
+        button {
+            flex: 1;
+            padding: 16px 16px;
+            border-radius: 18px;
+            border: none;
+            font-size: 18px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        #startBtn {
+            background: #2ee46b;
+            color: #000;
+        }
+
+        #startBtn.pause {
+            background: #ff9f0a;
+            color: #000;
+        }
+
+        #resetBtn {
+            background: rgba(142, 142, 147, .35);
+            color: #fff;
+        }
+
+        .small {
+            color: var(--muted);
+            font-size: 12px;
+            text-align: center;
+            max-width: 560px;
+            line-height: 1.35;
+        }
+
+        .footer {
+            margin-bottom: 10px;
+            width: 100%;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="wrap">
+        <div>
+            <div class="time" id="timeText">00:02.000</div>
+
+            <div style="height:18px"></div>
+
+            <div class="row" style="align-items:center">
+                <label for="targetInput">目標秒數</label>
+                <input id="targetInput" inputmode="decimal" autocomplete="off" value="2.00" />
+            </div>
+
+            <div style="height:18px"></div>
+
+            <!-- 可自行輸入的快捷秒數 -->
+            <div class="row" style="align-items:center; gap:10px;">
+                <label for="presetInput">快捷秒數</label>
+
+                <input id="presetInput" inputmode="decimal" autocomplete="off" placeholder="例如 2.10"
+                    style="width:140px;" />
+
+                <div class="chip" id="addPresetBtn" style="font-weight:800;">＋加入</div>
+            </div>
+
+            <div style="height:12px"></div>
+
+            <div class="row" id="presets"></div>
+        </div>
+
+        <div class="footer">
+            <div class="controls">
+                <button id="startBtn">Start</button>
+                <button id="resetBtn">Reset</button>
+            </div>
+            <div class="small">
+                測試版Ver 1.<br />
+                捕手 pop time
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (() => {
+            // ---------- PWA SW ----------
+            if ('serviceWorker' in navigator) {
+                window.addEventListener('load', () => {
+                    navigator.serviceWorker.register('./sw.js').catch(() => { });
+                });
+            }
+
+            // ---------- DOM ----------
+            const timeText = document.getElementById('timeText');
+            const targetInput = document.getElementById('targetInput');
+            const startBtn = document.getElementById('startBtn');
+            const resetBtn = document.getElementById('resetBtn');
+
+            const presetInput = document.getElementById('presetInput');
+            const addPresetBtn = document.getElementById('addPresetBtn');
+            const presetsEl = document.getElementById('presets');
+
+            // ---------- Audio (Web Audio) ----------
+            let audioCtx = null;
+            function ensureAudioUnlocked() {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+            }
+            function beep() {
+                if (!audioCtx) return;
+                const t0 = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = 880;      // 音高
+                gain.gain.setValueAtTime(0.0001, t0);
+                gain.gain.exponentialRampToValueAtTime(0.25, t0 + 0.01);
+                gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.20);
+                osc.connect(gain).connect(audioCtx.destination);
+                osc.start(t0);
+                osc.stop(t0 + 0.21);
+            }
+
+            // ---------- Timer core ----------
+            let running = false;
+            let endPerf = 0;       // performance.now() when timer ends
+            let rafId = 0;
+            let remainingMs = 2000;
+
+            function parseTargetSeconds() {
+                const s = (targetInput.value || "2.00").trim().replaceAll('，', '.').replaceAll(',', '.');
+                const v = Number(s);
+                return Number.isFinite(v) && v >= 0 ? v : 2.0;
+            }
+
+            function formatMs(ms) {
+                ms = Math.max(0, Math.round(ms));
+                const minutes = Math.floor(ms / 60000);
+                const seconds = Math.floor((ms % 60000) / 1000);
+                const millis = ms % 1000;
+                return String(minutes).padStart(2, '0') + ":" +
+                    String(seconds).padStart(2, '0') + "." +
+                    String(millis).padStart(3, '0');
+            }
+
+            function render(ms) {
+                timeText.textContent = formatMs(ms);
+            }
+
+            function stopAtZero() {
+                running = false;
+                startBtn.textContent = "Start";
+                startBtn.classList.remove('pause');
+                remainingMs = 0;
+                render(0);
+                beep();
+            }
+
+            function tick() {
+                if (!running) return;
+                const now = performance.now();
+                const msLeft = endPerf - now;
+                if (msLeft <= 0) {
+                    cancelAnimationFrame(rafId);
+                    stopAtZero();
+                    return;
+                }
+                remainingMs = msLeft;
+                render(msLeft);
+                rafId = requestAnimationFrame(tick);
+            }
+
+            function start() {
+                ensureAudioUnlocked();
+                if (remainingMs <= 0) remainingMs = parseTargetSeconds() * 1000;
+                endPerf = performance.now() + remainingMs;
+                running = true;
+                startBtn.textContent = "Pause";
+                startBtn.classList.add('pause');
+                rafId = requestAnimationFrame(tick);
+            }
+
+            function pause() {
+                running = false;
+                cancelAnimationFrame(rafId);
+                remainingMs = Math.max(0, endPerf - performance.now());
+                startBtn.textContent = "Start";
+                startBtn.classList.remove('pause');
+                render(remainingMs);
+            }
+
+            function reset() {
+                running = false;
+                cancelAnimationFrame(rafId);
+                remainingMs = parseTargetSeconds() * 1000;
+                startBtn.textContent = "Start";
+                startBtn.classList.remove('pause');
+                render(remainingMs);
+            }
+
+            // ---------- Presets (editable) ----------
+            const PRESET_KEY = "poptime_presets_v1";
+            let presets = loadPresets();
+
+            function loadPresets() {
+                try {
+                    const raw = localStorage.getItem(PRESET_KEY);
+                    if (!raw) return [1.80, 2.00, 2.20];
+                    const arr = JSON.parse(raw);
+                    if (!Array.isArray(arr)) return [1.80, 2.00, 2.20];
+                    return arr
+                        .map(x => Number(x))
+                        .filter(x => Number.isFinite(x) && x > 0)
+                        .slice(0, 12);
+                } catch {
+                    return [1.80, 2.00, 2.20];
+                }
+            }
+
+            function savePresets() {
+                localStorage.setItem(PRESET_KEY, JSON.stringify(presets));
+            }
+
+            function normalizeSecText(txt) {
+                const s = (txt || "").trim().replaceAll('，', '.').replaceAll(',', '.');
+                const v = Number(s);
+                if (!Number.isFinite(v) || v <= 0) return null;
+                // 限制 0.10 ~ 30.00 秒（你可自己改）
+                if (v < 0.01 || v > 120) return null;
+                return Math.round(v * 100) / 100; // 保留兩位小數
+            }
+
+            function renderPresets() {
+                presetsEl.innerHTML = "";
+                presets.forEach((sec, idx) => {
+                    const item = document.createElement("div");
+                    item.className = "presetItem";
+                    item.dataset.idx = String(idx);
+
+                    const text = document.createElement("span");
+                    text.textContent = sec.toFixed(2);
+
+                    const del = document.createElement("span");
+                    del.className = "presetDel";
+                    del.textContent = "×";
+                    del.title = "刪除";
+
+                    item.appendChild(text);
+                    item.appendChild(del);
+                    presetsEl.appendChild(item);
+                });
+            }
+
+            addPresetBtn.addEventListener("click", () => {
+                ensureAudioUnlocked();
+                const sec = normalizeSecText(presetInput.value);
+                if (sec === null) {
+                    alert("請輸入有效秒數（0.01 ~ 99.99）");
+                    return;
+                }
+                if (presets.includes(sec)) {
+                    presetInput.value = "";
+                    return;
+                }
+                presets.push(sec);
+                presets.sort((a, b) => a - b);
+                presets = presets.slice(0, 12);
+                savePresets();
+                renderPresets();
+                presetInput.value = "";
+            });
+
+            presetInput.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") addPresetBtn.click();
+            });
+
+            presetsEl.addEventListener("click", (e) => {
+                const item = e.target.closest(".presetItem");
+                if (!item) return;
+                const idx = Number(item.dataset.idx);
+                if (!Number.isFinite(idx)) return;
+
+                // 點到 x 就刪除
+                if (e.target.classList.contains("presetDel")) {
+                    presets.splice(idx, 1);
+                    if (presets.length === 0) presets = [2.00];
+                    savePresets();
+                    renderPresets();
+                    return;
+                }
+
+                // 點到 preset 本體：套用到目標秒數
+                const sec = presets[idx];
+                targetInput.value = sec.toFixed(2);
+                if (!running) reset();
+            });
+
+            // ---------- UI events ----------
+            startBtn.addEventListener('click', () => {
+                if (!running) start();
+                else pause();
+            });
+
+            resetBtn.addEventListener('click', () => reset());
+
+            targetInput.addEventListener('change', () => { if (!running) reset(); });
+            targetInput.addEventListener('blur', () => { if (!running) reset(); });
+
+            // init
+            renderPresets();
+            reset();
+
+        })();
+    </script>
+</body>
+
+</html>
