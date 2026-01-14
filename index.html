@@ -3,15 +3,12 @@
 
 <head>
     <meta charset="utf-8" />
-
     <meta name="viewport"
         content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-
     <meta name="theme-color" content="#000000" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Pop Time Timer</title>
-
     <link rel="manifest" href="manifest.webmanifest" />
 
     <style>
@@ -63,16 +60,15 @@
             justify-content: space-between;
         }
 
-        .time{
-          margin-top: 18dvh;
-          font-size: clamp(72px, 13vw, 120px);
-          font-weight: 700;
-          letter-spacing: 0.5px;
-          font-variant-numeric: tabular-nums;
-          text-align: center;
-          line-height: 1.05;
+        .time {
+            margin-top: 18dvh;
+            font-size: clamp(72px, 13vw, 120px);
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            font-variant-numeric: tabular-nums;
+            text-align: center;
+            line-height: 1.05;
         }
-
 
         .row {
             display: flex;
@@ -139,11 +135,6 @@
             border-radius: 10px;
         }
 
-        .presetDel:active {
-            transform: scale(.95);
-            opacity: 1;
-        }
-
         .controls {
             width: min(560px, 100%);
             display: flex;
@@ -151,13 +142,13 @@
             margin-bottom: 8px;
         }
 
-        button {
+        .controls button {
             flex: 1;
             padding: 16px 16px;
             border-radius: 18px;
             border: none;
             font-size: 18px;
-            font-weight: 700;
+            font-weight: 800;
             cursor: pointer;
         }
 
@@ -169,6 +160,12 @@
         #startBtn.pause {
             background: #ff9f0a;
             color: #000;
+        }
+
+        /* ✅ 鬧鐘停止鍵：紅色 */
+        #startBtn.alarm {
+            background: #ff453a;
+            color: #fff;
         }
 
         #resetBtn {
@@ -192,7 +189,7 @@
 </head>
 
 <body>
-    <div class="versionBadge" id="versionBadge">v3.1.1</div>
+    <div class="versionBadge" id="versionBadge">v3.3</div>
 
     <div class="wrap">
         <div>
@@ -224,7 +221,7 @@
                 <button id="resetBtn">Reset</button>
             </div>
             <div class="small">
-                測試ver1.<br />
+                測試ver2.<br />
                 Catcher pop timer
             </div>
         </div>
@@ -232,7 +229,7 @@
 
     <script>
         (() => {
-            const APP_VERSION = "v3.1";
+            const APP_VERSION = "v3.3";
             const versionBadge = document.getElementById("versionBadge");
             if (versionBadge) versionBadge.textContent = APP_VERSION;
 
@@ -244,52 +241,89 @@
                 lastTouchEnd = now;
             }, { passive: false });
 
-            // ---------- PWA SW ----------
-            if ('serviceWorker' in navigator) {
-                window.addEventListener('load', () => {
-                    navigator.serviceWorker.register('./sw.js').catch(() => { });
-                });
-            }
-
             // ---------- DOM ----------
-            const timeText = document.getElementById('timeText');
-            const targetInput = document.getElementById('targetInput');
-            const startBtn = document.getElementById('startBtn');
-            const resetBtn = document.getElementById('resetBtn');
+            const timeText = document.getElementById("timeText");
+            const targetInput = document.getElementById("targetInput");
+            const startBtn = document.getElementById("startBtn");
+            const resetBtn = document.getElementById("resetBtn");
+            const presetInput = document.getElementById("presetInput");
+            const addPresetBtn = document.getElementById("addPresetBtn");
+            const presetsEl = document.getElementById("presets");
 
-            const presetInput = document.getElementById('presetInput');
-            const addPresetBtn = document.getElementById('addPresetBtn');
-            const presetsEl = document.getElementById('presets');
-
-            // ---------- Audio ----------
+            // ---------- Audio (Web Audio) ----------
             let audioCtx = null;
             function ensureAudioUnlocked() {
                 if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                if (audioCtx.state === 'suspended') audioCtx.resume();
-            }
-            function beep() {
-                if (!audioCtx) return;
-                const t0 = audioCtx.currentTime;
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-                osc.type = 'sine';
-                osc.frequency.value = 880;
-                gain.gain.setValueAtTime(0.0001, t0);
-                gain.gain.exponentialRampToValueAtTime(0.25, t0 + 0.01);
-                gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.20);
-                osc.connect(gain).connect(audioCtx.destination);
-                osc.start(t0);
-                osc.stop(t0 + 0.21);
+                if (audioCtx.state === "suspended") audioCtx.resume();
             }
 
-            // ---------- Timer ----------
+            // 鬧鐘模式：用 interval 讓聲音反覆響
+            let alarmIntervalId = null;
+            let alarmRunning = false;
+
+            function playAlarmPulse() {
+                if (!audioCtx) return;
+
+                const t0 = audioCtx.currentTime;
+
+                // 做兩段音，像鬧鐘「嗶嗶」
+                const makeBeep = (freq, startDelay) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = "square";         // square 比較像鬧鐘/蜂鳴器
+                    osc.frequency.value = freq;
+
+                    const s = t0 + startDelay;
+                    gain.gain.setValueAtTime(0.0001, s);
+                    gain.gain.exponentialRampToValueAtTime(0.9, s + 0.01);   // ✅ 更大聲
+                    gain.gain.exponentialRampToValueAtTime(0.0001, s + 0.20);
+
+                    osc.connect(gain).connect(audioCtx.destination);
+                    osc.start(s);
+                    osc.stop(s + 0.21);
+                };
+
+                makeBeep(880, 0.00);
+                makeBeep(660, 0.28);
+            }
+
+            function startAlarm() {
+                ensureAudioUnlocked();
+                if (alarmRunning) return;
+                alarmRunning = true;
+
+                // 先響一次
+                playAlarmPulse();
+
+                // 每 1 秒響一次（你可調快慢：0.8～1.2 秒最像鬧鐘）
+                alarmIntervalId = setInterval(() => {
+                    playAlarmPulse();
+                }, 1000);
+
+                // UI 變成 Stop Alarm
+                startBtn.textContent = "Stop Alarm";
+                startBtn.classList.remove("pause");
+                startBtn.classList.add("alarm");
+            }
+
+            function stopAlarm() {
+                alarmRunning = false;
+                if (alarmIntervalId) clearInterval(alarmIntervalId);
+                alarmIntervalId = null;
+
+                // UI 回到 Start
+                startBtn.textContent = "Start";
+                startBtn.classList.remove("alarm");
+            }
+
+            // ---------- Timer core ----------
             let running = false;
             let endPerf = 0;
             let rafId = 0;
             let remainingMs = 2000;
 
             function parseTargetSeconds() {
-                const s = (targetInput.value || "2.00").trim().replaceAll('，', '.').replaceAll(',', '.');
+                const s = (targetInput.value || "2.00").trim().replaceAll("，", ".").replaceAll(",", ".");
                 const v = Number(s);
                 return Number.isFinite(v) && v >= 0 ? v : 2.0;
             }
@@ -299,27 +333,29 @@
                 const minutes = Math.floor(ms / 60000);
                 const seconds = Math.floor((ms % 60000) / 1000);
                 const millis = ms % 1000;
-                return String(minutes).padStart(2, '0') + ":" +
-                    String(seconds).padStart(2, '0') + "." +
-                    String(millis).padStart(3, '0');
+                return String(minutes).padStart(2, "0") + ":" +
+                    String(seconds).padStart(2, "0") + "." +
+                    String(millis).padStart(3, "0");
             }
 
             function render(ms) { timeText.textContent = formatMs(ms); }
 
-            function stopAtZero() {
+            function finish() {
                 running = false;
-                startBtn.textContent = "Start";
-                startBtn.classList.remove('pause');
+                cancelAnimationFrame(rafId);
+                rafId = 0;
                 remainingMs = 0;
                 render(0);
-                beep();
+
+                // 到點：啟動鬧鐘（一直響到停）
+                startAlarm();
             }
 
             function tick() {
                 if (!running) return;
                 const now = performance.now();
                 const msLeft = endPerf - now;
-                if (msLeft <= 0) { cancelAnimationFrame(rafId); stopAtZero(); return; }
+                if (msLeft <= 0) { finish(); return; }
                 remainingMs = msLeft;
                 render(msLeft);
                 rafId = requestAnimationFrame(tick);
@@ -327,11 +363,13 @@
 
             function start() {
                 ensureAudioUnlocked();
+                // 若正在響鬧鐘，Start鍵會被設計成 Stop Alarm（由 onClick處理）
                 if (remainingMs <= 0) remainingMs = parseTargetSeconds() * 1000;
                 endPerf = performance.now() + remainingMs;
                 running = true;
                 startBtn.textContent = "Pause";
-                startBtn.classList.add('pause');
+                startBtn.classList.remove("alarm");
+                startBtn.classList.add("pause");
                 rafId = requestAnimationFrame(tick);
             }
 
@@ -340,16 +378,22 @@
                 cancelAnimationFrame(rafId);
                 remainingMs = Math.max(0, endPerf - performance.now());
                 startBtn.textContent = "Start";
-                startBtn.classList.remove('pause');
+                startBtn.classList.remove("pause");
                 render(remainingMs);
             }
 
             function reset() {
                 running = false;
                 cancelAnimationFrame(rafId);
+                rafId = 0;
+
+                //  reset 也順便停鬧鐘
+                if (alarmRunning) stopAlarm();
+
                 remainingMs = parseTargetSeconds() * 1000;
                 startBtn.textContent = "Start";
-                startBtn.classList.remove('pause');
+                startBtn.classList.remove("pause");
+                startBtn.classList.remove("alarm");
                 render(remainingMs);
             }
 
@@ -370,7 +414,7 @@
             function savePresets() { localStorage.setItem(PRESET_KEY, JSON.stringify(presets)); }
 
             function normalizeSecText(txt) {
-                const s = (txt || "").trim().replaceAll('，', '.').replaceAll(',', '.');
+                const s = (txt || "").trim().replaceAll("，", ".").replaceAll(",", ".");
                 const v = Number(s);
                 if (!Number.isFinite(v) || v <= 0) return null;
                 if (v < 0.10 || v > 30) return null;
@@ -429,14 +473,23 @@
 
                 const sec = presets[idx];
                 targetInput.value = sec.toFixed(2);
-                if (!running) reset();
+                if (!running && !alarmRunning) reset();
             });
 
             // ---------- UI events ----------
-            startBtn.addEventListener('click', () => { if (!running) start(); else pause(); });
-            resetBtn.addEventListener('click', () => reset());
-            targetInput.addEventListener('change', () => { if (!running) reset(); });
-            targetInput.addEventListener('blur', () => { if (!running) reset(); });
+            startBtn.addEventListener("click", () => {
+                // 若鬧鐘正在響，按這顆就停鬧鐘
+                if (alarmRunning) {
+                    stopAlarm();
+                    return;
+                }
+                if (!running) start();
+                else pause();
+            });
+
+            resetBtn.addEventListener("click", () => reset());
+            targetInput.addEventListener("change", () => { if (!running && !alarmRunning) reset(); });
+            targetInput.addEventListener("blur", () => { if (!running && !alarmRunning) reset(); });
 
             // init
             renderPresets();
@@ -445,6 +498,4 @@
     </script>
 </body>
 
-
 </html>
-
