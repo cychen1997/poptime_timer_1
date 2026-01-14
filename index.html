@@ -3,7 +3,10 @@
 
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+
     <meta name="theme-color" content="#000000" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -22,12 +25,33 @@
             box-sizing: border-box;
         }
 
+        html,
+        body {
+            touch-action: manipulation;
+        }
+
         body {
             margin: 0;
             background: var(--bg);
             color: var(--fg);
             font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
             -webkit-tap-highlight-color: transparent;
+        }
+
+        .versionBadge {
+            position: fixed;
+            top: max(10px, env(safe-area-inset-top));
+            left: 12px;
+            padding: 6px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            letter-spacing: .2px;
+            color: rgba(255, 255, 255, .85);
+            background: rgba(255, 255, 255, .10);
+            border: 1px solid rgba(255, 255, 255, .14);
+            user-select: none;
+            z-index: 10;
+            font-variant-numeric: tabular-nums;
         }
 
         .wrap {
@@ -40,9 +64,9 @@
         }
 
         .time {
-            margin-top: 12dvh;
-            font-size: clamp(56px, 10vw, 92px);
-            font-weight: 650;
+            margin-top: 10dvh;
+            font-size: clamp(72px, 13vw, 120px);
+            font-weight: 700;
             letter-spacing: 0.5px;
             font-variant-numeric: tabular-nums;
         }
@@ -165,6 +189,8 @@
 </head>
 
 <body>
+    <div class="versionBadge" id="versionBadge">v3.1</div>
+
     <div class="wrap">
         <div>
             <div class="time" id="timeText">00:02.000</div>
@@ -178,13 +204,9 @@
 
             <div style="height:18px"></div>
 
-            <!-- 可自行輸入的快捷秒數 -->
             <div class="row" style="align-items:center; gap:10px;">
                 <label for="presetInput">快捷秒數</label>
-
-                <input id="presetInput" inputmode="decimal" autocomplete="off" placeholder="例如 2.10"
-                    style="width:140px;" />
-
+                <input id="presetInput" inputmode="decimal" autocomplete="off" placeholder="例如 2.10" />
                 <div class="chip" id="addPresetBtn" style="font-weight:800;">＋加入</div>
             </div>
 
@@ -199,14 +221,26 @@
                 <button id="resetBtn">Reset</button>
             </div>
             <div class="small">
-                測試版Ver 1.<br />
-                捕手 pop time
+                測試ver1.<br />
+                Catcher pop timer
             </div>
         </div>
     </div>
 
     <script>
         (() => {
+            const APP_VERSION = "v3.1";
+            const versionBadge = document.getElementById("versionBadge");
+            if (versionBadge) versionBadge.textContent = APP_VERSION;
+
+            // iOS：攔截 double-tap zoom（保險）
+            let lastTouchEnd = 0;
+            document.addEventListener('touchend', function (event) {
+                const now = Date.now();
+                if (now - lastTouchEnd <= 300) event.preventDefault();
+                lastTouchEnd = now;
+            }, { passive: false });
+
             // ---------- PWA SW ----------
             if ('serviceWorker' in navigator) {
                 window.addEventListener('load', () => {
@@ -224,7 +258,7 @@
             const addPresetBtn = document.getElementById('addPresetBtn');
             const presetsEl = document.getElementById('presets');
 
-            // ---------- Audio (Web Audio) ----------
+            // ---------- Audio ----------
             let audioCtx = null;
             function ensureAudioUnlocked() {
                 if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -236,7 +270,7 @@
                 const osc = audioCtx.createOscillator();
                 const gain = audioCtx.createGain();
                 osc.type = 'sine';
-                osc.frequency.value = 880;      // 音高
+                osc.frequency.value = 880;
                 gain.gain.setValueAtTime(0.0001, t0);
                 gain.gain.exponentialRampToValueAtTime(0.25, t0 + 0.01);
                 gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.20);
@@ -245,9 +279,9 @@
                 osc.stop(t0 + 0.21);
             }
 
-            // ---------- Timer core ----------
+            // ---------- Timer ----------
             let running = false;
-            let endPerf = 0;       // performance.now() when timer ends
+            let endPerf = 0;
             let rafId = 0;
             let remainingMs = 2000;
 
@@ -267,9 +301,7 @@
                     String(millis).padStart(3, '0');
             }
 
-            function render(ms) {
-                timeText.textContent = formatMs(ms);
-            }
+            function render(ms) { timeText.textContent = formatMs(ms); }
 
             function stopAtZero() {
                 running = false;
@@ -284,11 +316,7 @@
                 if (!running) return;
                 const now = performance.now();
                 const msLeft = endPerf - now;
-                if (msLeft <= 0) {
-                    cancelAnimationFrame(rafId);
-                    stopAtZero();
-                    return;
-                }
+                if (msLeft <= 0) { cancelAnimationFrame(rafId); stopAtZero(); return; }
                 remainingMs = msLeft;
                 render(msLeft);
                 rafId = requestAnimationFrame(tick);
@@ -322,7 +350,7 @@
                 render(remainingMs);
             }
 
-            // ---------- Presets (editable) ----------
+            // ---------- Presets ----------
             const PRESET_KEY = "poptime_presets_v1";
             let presets = loadPresets();
 
@@ -332,26 +360,18 @@
                     if (!raw) return [1.80, 2.00, 2.20];
                     const arr = JSON.parse(raw);
                     if (!Array.isArray(arr)) return [1.80, 2.00, 2.20];
-                    return arr
-                        .map(x => Number(x))
-                        .filter(x => Number.isFinite(x) && x > 0)
-                        .slice(0, 12);
-                } catch {
-                    return [1.80, 2.00, 2.20];
-                }
+                    return arr.map(Number).filter(x => Number.isFinite(x) && x > 0).slice(0, 12);
+                } catch { return [1.80, 2.00, 2.20]; }
             }
 
-            function savePresets() {
-                localStorage.setItem(PRESET_KEY, JSON.stringify(presets));
-            }
+            function savePresets() { localStorage.setItem(PRESET_KEY, JSON.stringify(presets)); }
 
             function normalizeSecText(txt) {
                 const s = (txt || "").trim().replaceAll('，', '.').replaceAll(',', '.');
                 const v = Number(s);
                 if (!Number.isFinite(v) || v <= 0) return null;
-                // 限制 0.10 ~ 30.00 秒（你可自己改）
-                if (v < 0.01 || v > 120) return null;
-                return Math.round(v * 100) / 100; // 保留兩位小數
+                if (v < 0.10 || v > 30) return null;
+                return Math.round(v * 100) / 100;
             }
 
             function renderPresets() {
@@ -378,19 +398,12 @@
             addPresetBtn.addEventListener("click", () => {
                 ensureAudioUnlocked();
                 const sec = normalizeSecText(presetInput.value);
-                if (sec === null) {
-                    alert("請輸入有效秒數（0.01 ~ 99.99）");
-                    return;
-                }
-                if (presets.includes(sec)) {
-                    presetInput.value = "";
-                    return;
-                }
+                if (sec === null) { alert("請輸入有效秒數（0.10 ~ 30.00）"); return; }
+                if (presets.includes(sec)) { presetInput.value = ""; return; }
                 presets.push(sec);
                 presets.sort((a, b) => a - b);
                 presets = presets.slice(0, 12);
-                savePresets();
-                renderPresets();
+                savePresets(); renderPresets();
                 presetInput.value = "";
             });
 
@@ -404,36 +417,27 @@
                 const idx = Number(item.dataset.idx);
                 if (!Number.isFinite(idx)) return;
 
-                // 點到 x 就刪除
                 if (e.target.classList.contains("presetDel")) {
                     presets.splice(idx, 1);
                     if (presets.length === 0) presets = [2.00];
-                    savePresets();
-                    renderPresets();
+                    savePresets(); renderPresets();
                     return;
                 }
 
-                // 點到 preset 本體：套用到目標秒數
                 const sec = presets[idx];
                 targetInput.value = sec.toFixed(2);
                 if (!running) reset();
             });
 
             // ---------- UI events ----------
-            startBtn.addEventListener('click', () => {
-                if (!running) start();
-                else pause();
-            });
-
+            startBtn.addEventListener('click', () => { if (!running) start(); else pause(); });
             resetBtn.addEventListener('click', () => reset());
-
             targetInput.addEventListener('change', () => { if (!running) reset(); });
             targetInput.addEventListener('blur', () => { if (!running) reset(); });
 
             // init
             renderPresets();
             reset();
-
         })();
     </script>
 </body>

@@ -1,4 +1,4 @@
-const CACHE = "poptime-v1";
+const CACHE = "poptime-v31";
 const ASSETS = ["./", "./index.html", "./manifest.webmanifest", "./sw.js"];
 
 self.addEventListener("install", (e) => {
